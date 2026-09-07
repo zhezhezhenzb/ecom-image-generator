@@ -1,0 +1,31 @@
+# Render 部署配置
+# 在 Render  Dashboard 中选择 "Blueprint" 导入此文件，或手动配置
+
+services:
+  - type: web
+    name: ecom-image-generator
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: FEISHU_APP_ID
+        sync: false
+      - key: FEISHU_APP_SECRET
+        sync: false
+      - key: BASE_TOKEN
+        sync: false
+      - key: TABLE_ID
+        sync: false
+      - key: API_KEYS
+        sync: false
+      - key: LLM_MODEL
+        value: gpt-5.5
+      - key: IMG_MODEL
+        value: gpt-image-2-vip
+      - key: FEISHU_REDIRECT_URI
+        sync: false
+      - key: ENABLE_POLLING
+        value: "true"
+      - key: POLL_INTERVAL
+        value: "15"

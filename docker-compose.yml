@@ -1,0 +1,45 @@
+# 电商产品图套装生成服务 - docker-compose
+version: '3.8'
+
+services:
+  ecom-gen:
+    build: .
+    container_name: ecom-image-generator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # ===== 必须配置 =====
+      # 飞书自建应用的 App ID 和 App Secret
+      # 创建方式：飞书开放平台 → 创建应用 → 凭证与基础信息
+      - FEISHU_APP_ID=your_app_id_here
+      - FEISHU_APP_SECRET=your_app_secret_here
+
+      # 飞书多维表格配置（默认已配置好，如更换表格需修改）
+      - BASE_TOKEN=ZeQebBA2qaUwNksPJZfckXZ9nfb
+      - TABLE_ID=tblKkLKHAHdvT4E5
+
+      # ===== 可选配置 =====
+      # API 配置（多个 Key 用逗号分隔）
+      - API_BASE=https://api2.laozhang.ai/v1
+      - API_KEYS=sk-xxx1,sk-xxx2,sk-xxx3
+      - LLM_MODEL=gpt-5.5
+      - IMG_MODEL=gpt-image-2-vip
+
+      # Webhook 验证密钥（可选，配置后会验证请求来源）
+      - WEBHOOK_SECRET=
+
+      # 并发控制
+      - MAX_CONCURRENT_IMAGES=3
+      - REQUEST_TIMEOUT=120
+
+      # 服务配置
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - TEMP_DIR=/tmp/ecom_gen
+
+    volumes:
+      - ecom_gen_temp:/tmp/ecom_gen
+
+volumes:
+  ecom_gen_temp:
