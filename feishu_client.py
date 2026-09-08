@@ -312,20 +312,27 @@ class FeishuClient:
         resp = requests.get(download_url, headers=headers, timeout=REQUEST_TIMEOUT * 2)
         
         if resp.status_code in [400, 403, 404]:
-            # 方式2：先获取临时下载链接（POST，extra 作为 URL 查询参数）
-            tmp_url_api = f"https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url?extra={extra_encoded}"
-            resp2 = requests.post(tmp_url_api, headers=self._user_headers(), json={"file_tokens": [file_token]}, timeout=REQUEST_TIMEOUT)
+            # 方式2：先获取临时下载链接（GET 方法，参数放 URL 查询中）
+            tmp_url_api = f"https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens={file_token}&extra={extra_encoded}"
+            resp2 = requests.get(tmp_url_api, headers=self._user_headers(), timeout=REQUEST_TIMEOUT)
             if resp2.status_code == 404:
-                raise Exception(f"下载接口404，file_token可能无效或无权限。token: {file_token}")
-            resp2.raise_for_status()
-            data = resp2.json()
-            if data.get("code") != 0:
-                raise Exception(f"获取临时下载链接失败: {data}")
-            urls = data.get("data", {}).get("tmp_download_urls", [])
-            if not urls or not urls[0].get("tmp_download_url"):
-                raise Exception(f"临时下载链接为空（file_token: {file_token}），用户可能无权限访问该附件")
-            tmp_download_url = urls[0]["tmp_download_url"]
-            resp = requests.get(tmp_download_url, timeout=REQUEST_TIMEOUT * 2)
+                # 方式3：用应用身份 token 尝试下载
+                download_url_app = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download?extra={extra_encoded}"
+                resp3 = requests.get(download_url_app, headers=self._headers(), timeout=REQUEST_TIMEOUT * 2)
+                if resp3.status_code in [200, 302]:
+                    resp = resp3
+                else:
+                    raise Exception(f"下载接口404，file_token可能无效或无权限。token: {file_token}")
+            else:
+                resp2.raise_for_status()
+                data = resp2.json()
+                if data.get("code") != 0:
+                    raise Exception(f"获取临时下载链接失败: {data}")
+                urls = data.get("data", {}).get("tmp_download_urls", [])
+                if not urls or not urls[0].get("tmp_download_url"):
+                    raise Exception(f"临时下载链接为空（file_token: {file_token}），用户可能无权限访问该附件")
+                tmp_download_url = urls[0]["tmp_download_url"]
+                resp = requests.get(tmp_download_url, timeout=REQUEST_TIMEOUT * 2)
 
         resp.raise_for_status()
 
