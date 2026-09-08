@@ -31,6 +31,13 @@ class FeishuClient:
         self._user_refresh_token = None
         self._user_token_expire_time = 0
         self._load_user_token()
+        # 如果文件中没有 token，尝试从环境变量读取
+        if not self._user_refresh_token:
+            env_refresh = os.getenv("FEISHU_USER_REFRESH_TOKEN", "")
+            if env_refresh:
+                self._user_refresh_token = env_refresh
+                self._user_token_expire_time = 0  # 强制刷新
+                log("从环境变量加载了用户 refresh_token", "success")
 
     # ==================== 应用身份（tenant_access_token） ====================
 
@@ -93,6 +100,11 @@ class FeishuClient:
         self._user_token_expire_time = time.time() + token_data.get("expires_in", 7200)
         self._save_user_token()
         log("用户授权成功，token已保存", "success")
+        log("=" * 60)
+        log(f"【重要】请将以下 refresh_token 保存到 Render 环境变量 FEISHU_USER_REFRESH_TOKEN 中：")
+        log(f"FEISHU_USER_REFRESH_TOKEN={self._user_refresh_token}")
+        log("这样服务重启后就不需要重新授权了！")
+        log("=" * 60)
         return token_data
 
     def refresh_user_token(self):

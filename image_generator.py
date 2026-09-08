@@ -789,15 +789,34 @@ def process_record(record_id):
                         log(f"图片 {idx+1} 下载失败: {e}", "warn")
 
         log(f"ZIP 打包完成: {zip_path}", "success")
+        log(f"ZIP 文件大小: {os.path.getsize(zip_path)} 字节")
 
-        # ===== 上传 ZIP 到飞书表格 =====
+        # ===== 上传 ZIP 到飞书表格（带重试） =====
         log("正在上传 ZIP 到飞书表格...")
-        feishu.upload_attachment(record_id, "结果ZIP", zip_path)
+        upload_success = False
+        last_error = None
+        for retry in range(3):
+            try:
+                feishu.upload_attachment(record_id, "结果ZIP", zip_path)
+                upload_success = True
+                break
+            except Exception as e:
+                last_error = e
+                log(f"ZIP 上传失败（第{retry+1}次）: {e}", "warn")
+                time.sleep(2)
+
+        if not upload_success:
+            log(f"ZIP 上传最终失败: {last_error}", "error")
+            # 即使上传失败，也不抛出异常，状态标记为部分成功
+            feishu.update_record_status(record_id, "部分成功", f"图片生成成功但ZIP上传失败: {str(last_error)[:300]}")
+            log(f"记录 {record_id} 部分成功（图片已生成但ZIP上传失败）", "warn")
+            return True
+
         log("ZIP 上传成功", "success")
 
         # 更新状态为已完成
         feishu.update_record_status(record_id, "已完成")
-        log(f"记录 {record_id} 处理完成！", "success")
+        log(f"记录 {record_id} 处理完成！成功 {success_count} 张，失败 {fail_count} 张", "success")
 
         return True
 
