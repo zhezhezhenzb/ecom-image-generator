@@ -55,6 +55,14 @@ async def run_generation_async(record_id: str):
         log(f"异步处理失败: {record_id}, 错误: {e}", "error")
         import traceback
         traceback.print_exc()
+        # 失败时更新状态为"失败"
+        try:
+            feishu = get_feishu_client()
+            error_msg = str(e)[:500]  # 限制长度
+            feishu.update_record_status(record_id, "失败", error_msg)
+            log(f"已更新记录 {record_id} 状态为失败", "warn")
+        except Exception as e2:
+            log(f"更新失败状态失败: {e2}", "warn")
     finally:
         # 移除正在处理的标记
         processing_records.discard(record_id)

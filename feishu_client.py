@@ -231,10 +231,14 @@ class FeishuClient:
 
     def update_record_status(self, record_id, status, error_msg=None):
         """更新记录状态（便捷方法）"""
-        fields = {"状态": status}
+        # 先更新状态
+        self.update_record(record_id, {"状态": status})
+        # 再尝试更新错误信息（字段不存在时不影响状态更新）
         if error_msg:
-            fields["错误信息"] = error_msg
-        return self.update_record(record_id, fields)
+            try:
+                self.update_record(record_id, {"错误信息": error_msg})
+            except Exception:
+                pass  # 错误信息字段不存在时忽略
 
     # ==================== 附件上传（应用身份） ====================
 
@@ -270,6 +274,15 @@ class FeishuClient:
         update_data = self.update_record(record_id, fields)
         return {"file_token": file_token}
 
+    def upload_attachment(self, record_id, field_name, file_path):
+        """上传附件到记录字段（通用方法）"""
+        file_token = self.upload_file_to_drive(file_path)
+        fields = {
+            field_name: [{"file_token": file_token}]
+        }
+        self.update_record(record_id, fields)
+        return {"file_token": file_token}
+
     # ==================== 附件下载（用户身份） ====================
 
     def download_attachment(self, file_token, save_path, record_id=None, base_token=None, table_id=None):
@@ -284,10 +297,9 @@ class FeishuClient:
         save_filename = os.path.basename(save_path)
         os.makedirs(save_dir, exist_ok=True)
 
-        # 第一步：用用户身份获取临时下载链接
+        # 第一步：用用户身份获取临时下载链接（POST + 请求体数组）
         tmp_url_api = "https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url"
-        params = {"file_tokens": file_token}
-        resp = requests.get(tmp_url_api, headers=self._user_headers(), params=params, timeout=REQUEST_TIMEOUT)
+        resp = requests.post(tmp_url_api, headers=self._user_headers(), json={"file_tokens": [file_token]}, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
         if data.get("code") != 0:
