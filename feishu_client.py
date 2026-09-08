@@ -300,72 +300,88 @@ class FeishuClient:
         bt = base_token or BASE_TOKEN
         tid = table_id or TABLE_ID
 
+        def try_download(url, headers, label):
+            """尝试下载，返回 response 或 None"""
+            try:
+                r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT * 2)
+                log(f"  下载尝试[{label}]: status={r.status_code}, size={len(r.content)}")
+                if r.status_code == 200 and len(r.content) > 0:
+                    return r
+                if r.status_code not in [400, 403, 404]:
+                    r.raise_for_status()
+            except Exception as e:
+                log(f"  下载尝试[{label}]异常: {e}", "warn")
+            return None
+
         # 方式0：如果有 tmp_url（记录详情返回的，已带正确的 extra 参数），直接用
         if tmp_url:
-            resp = requests.get(tmp_url, headers=self._user_headers(), timeout=REQUEST_TIMEOUT * 2)
-            if resp.status_code == 200 and len(resp.content) > 0:
+            log(f"尝试方式0: tmp_url")
+            resp = try_download(tmp_url, self._user_headers(), "tmp_url")
+            if resp:
+                final_path = os.path.join(save_dir, save_filename)
+                with open(final_path, "wb") as f:
+                    f.write(resp.content)
+                return final_path
+
+        # 构建各种 extra 参数
+        extra_simple = requests.utils.quote(json.dumps({"bitablePerm": {"tableId": tid, "rev": 0}}, separators=(',', ':')))
+        if field_id and record_id:
+            extra_complex = requests.utils.quote(json.dumps({
+                "bitablePerm": {"tableId": tid, "attachments": {field_id: {record_id: [file_token]}}}
+            }, separators=(',', ':')))
+        else:
+            extra_complex = extra_simple
+
+        user_headers = self._user_headers()
+        app_headers = self._headers()
+        base = "https://open.feishu.cn/open-apis/drive/v1/medias"
+
+        # 尝试多种下载方式
+        download_attempts = [
+            # (url, headers, label)
+            (f"{base}/{file_token}/download", user_headers, "用户身份-无extra"),
+            (f"{base}/{file_token}/download?extra={extra_simple}", user_headers, "用户身份-简单extra"),
+            (f"{base}/{file_token}/download?extra={extra_complex}", user_headers, "用户身份-复杂extra"),
+            (f"{base}/batch_get_tmp_download_url?file_tokens={file_token}", user_headers, "用户身份-临时链接-无extra"),
+            (f"{base}/batch_get_tmp_download_url?file_tokens={file_token}&extra={extra_simple}", user_headers, "用户身份-临时链接-简单extra"),
+            (f"{base}/{file_token}/download", app_headers, "应用身份-无extra"),
+            (f"{base}/{file_token}/download?extra={extra_simple}", app_headers, "应用身份-简单extra"),
+        ]
+
+        for url, headers, label in download_attempts:
+            log(f"尝试方式: {label}")
+            resp = try_download(url, headers, label)
+            if resp:
+                # 如果是临时链接接口，需要解析出临时下载链接
+                if "batch_get_tmp_download_url" in url:
+                    try:
+                        data = resp.json()
+                        if data.get("code") == 0:
+                            urls = data.get("data", {}).get("tmp_download_urls", [])
+                            if urls and urls[0].get("tmp_download_url"):
+                                tmp_dl_url = urls[0]["tmp_download_url"]
+                                resp2 = try_download(tmp_dl_url, {}, "临时链接下载")
+                                if resp2:
+                                    resp = resp2
+                                else:
+                                    continue
+                            else:
+                                continue
+                        else:
+                            log(f"  临时链接接口返回错误: {data}", "warn")
+                            continue
+                    except Exception as e:
+                        log(f"  解析临时链接失败: {e}", "warn")
+                        continue
+
                 final_path = os.path.join(save_dir, save_filename)
                 with open(final_path, "wb") as f:
                     f.write(resp.content)
                 if os.path.getsize(final_path) > 0:
+                    log(f"下载成功，使用方式: {label}", "success")
                     return final_path
 
-        # 构建 extra 参数（复杂格式，包含 field_id、record_id、file_token）
-        if field_id and record_id:
-            extra_obj = {
-                "bitablePerm": {
-                    "tableId": tid,
-                    "attachments": {
-                        field_id: {
-                            record_id: [file_token]
-                        }
-                    }
-                }
-            }
-        else:
-            extra_obj = {"bitablePerm": {"tableId": tid, "rev": 0}}
-        extra_str = json.dumps(extra_obj, separators=(',', ':'))
-        extra_encoded = requests.utils.quote(extra_str)
-
-        headers = self._user_headers()
-
-        # 方式1：直接用下载接口（extra 作为 URL 查询参数）
-        download_url = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download?extra={extra_encoded}"
-        resp = requests.get(download_url, headers=headers, timeout=REQUEST_TIMEOUT * 2)
-        
-        if resp.status_code in [400, 403, 404]:
-            # 方式2：先获取临时下载链接（GET 方法，参数放 URL 查询中）
-            tmp_url_api = f"https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens={file_token}&extra={extra_encoded}"
-            resp2 = requests.get(tmp_url_api, headers=self._user_headers(), timeout=REQUEST_TIMEOUT)
-            if resp2.status_code == 404:
-                # 方式3：用应用身份 token 尝试下载
-                download_url_app = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download?extra={extra_encoded}"
-                resp3 = requests.get(download_url_app, headers=self._headers(), timeout=REQUEST_TIMEOUT * 2)
-                if resp3.status_code in [200, 302]:
-                    resp = resp3
-                else:
-                    raise Exception(f"下载接口404，file_token可能无效或无权限。token: {file_token}")
-            else:
-                resp2.raise_for_status()
-                data = resp2.json()
-                if data.get("code") != 0:
-                    raise Exception(f"获取临时下载链接失败: {data}")
-                urls = data.get("data", {}).get("tmp_download_urls", [])
-                if not urls or not urls[0].get("tmp_download_url"):
-                    raise Exception(f"临时下载链接为空（file_token: {file_token}），用户可能无权限访问该附件")
-                tmp_download_url = urls[0]["tmp_download_url"]
-                resp = requests.get(tmp_download_url, timeout=REQUEST_TIMEOUT * 2)
-
-        resp.raise_for_status()
-
-        final_path = os.path.join(save_dir, save_filename)
-        with open(final_path, "wb") as f:
-            f.write(resp.content)
-
-        if os.path.getsize(final_path) == 0:
-            raise Exception(f"下载后文件为空: {final_path}")
-
-        return final_path
+        raise Exception(f"所有下载方式均失败，file_token: {file_token}")
 
 
 # 单例
