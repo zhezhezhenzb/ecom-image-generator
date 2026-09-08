@@ -297,11 +297,18 @@ class FeishuClient:
         save_filename = os.path.basename(save_path)
         os.makedirs(save_dir, exist_ok=True)
 
+        # 构建用户身份请求头，加上 extra 参数（多维表格附件下载必需）
+        headers = self._user_headers()
+        bt = base_token or BASE_TOKEN
+        tid = table_id or TABLE_ID
+        extra = json.dumps({"bitablePerm": {"tableId": tid, "rev": 0}})
+        headers["extra"] = extra
+
         # 方式1：直接用下载接口
         download_url = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download"
-        resp = requests.get(download_url, headers=self._user_headers(), timeout=REQUEST_TIMEOUT * 2)
+        resp = requests.get(download_url, headers=headers, timeout=REQUEST_TIMEOUT * 2)
         
-        if resp.status_code == 404:
+        if resp.status_code in [400, 404]:
             # 方式2：先获取临时下载链接（POST）
             tmp_url_api = "https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url"
             resp2 = requests.post(tmp_url_api, headers=self._user_headers(), json={"file_tokens": [file_token]}, timeout=REQUEST_TIMEOUT)
