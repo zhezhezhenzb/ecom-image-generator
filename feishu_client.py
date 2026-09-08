@@ -374,12 +374,32 @@ class FeishuClient:
         return {"file_token": file_token}
 
     def upload_attachment(self, record_id, field_name, file_path):
-        """上传附件到记录字段（通用方法）"""
+        """上传附件到记录字段（通用方法，覆盖原有附件）"""
         file_token = self.upload_file_to_drive(file_path)
         fields = {
             field_name: [{"file_token": file_token}]
         }
         self.update_record(record_id, fields)
+        return {"file_token": file_token}
+
+    def append_attachment(self, record_id, field_name, file_path):
+        """追加附件到记录字段（保留已有附件，新增一张）"""
+        file_token = self.upload_file_to_drive(file_path)
+        # 先读取当前记录的附件字段
+        try:
+            record = self.get_record(record_id)
+            existing = record.get("fields", {}).get(field_name, [])
+            if not isinstance(existing, list):
+                existing = []
+            # 提取已有的 file_token
+            existing_tokens = [{"file_token": item.get("file_token")} for item in existing if item.get("file_token")]
+        except Exception:
+            existing_tokens = []
+        # 追加新附件
+        existing_tokens.append({"file_token": file_token})
+        fields = {field_name: existing_tokens}
+        self.update_record(record_id, fields)
+        log(f"追加附件成功，当前共 {len(existing_tokens)} 个附件", "success")
         return {"file_token": file_token}
 
     # ==================== 附件下载（用户身份） ====================

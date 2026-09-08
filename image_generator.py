@@ -760,63 +760,64 @@ def process_record(record_id):
         if success_count == 0:
             raise Exception("所有图片生成失败")
 
-        # ===== 打包 ZIP =====
-        log("正在打包 ZIP...")
+        # ===== 逐张下载并上传图片到飞书表格 =====
+        log("正在逐张上传图片到飞书表格...")
         safe_name = sanitize_filename(product_name)
-        zip_path = os.path.join(work_dir, f"{safe_name}_电商图套装_{time.strftime('%Y%m%d_%H%M')}.zip")
+        upload_success_count = 0
+        upload_fail_count = 0
 
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for idx in range(10):
-                r = results[idx]
-                if not r or not r.get("url"):
-                    continue
-                url = r["url"]
-                label = sanitize_filename(image_types[idx]["label"] if image_types[idx] else f"image_{idx+1}")
-                ext = get_file_ext_from_url(url)
+        for idx in range(10):
+            r = results[idx]
+            if not r or not r.get("url"):
+                continue
+            url = r["url"]
+            label = sanitize_filename(image_types[idx]["label"] if image_types[idx] else f"image_{idx+1}")
+            ext = get_file_ext_from_url(url)
+            img_filename = f"{safe_name}_{str(idx+1).zfill(2)}_{label}.{ext}"
+            img_path = os.path.join(work_dir, img_filename)
 
+            # 下载图片
+            try:
                 if url.startswith("data:"):
                     parts = url.split(',', 1)
                     img_data = base64.b64decode(parts[1])
-                    arcname = f"{safe_name}_{str(idx+1).zfill(2)}_{label}.{ext}"
-                    zf.writestr(arcname, img_data)
+                    with open(img_path, "wb") as f:
+                        f.write(img_data)
                 else:
-                    try:
-                        resp = requests.get(url, timeout=30, proxies=NO_PROXY)
-                        if resp.ok:
-                            arcname = f"{safe_name}_{str(idx+1).zfill(2)}_{label}.{ext}"
-                            zf.writestr(arcname, resp.content)
-                    except Exception as e:
-                        log(f"图片 {idx+1} 下载失败: {e}", "warn")
-
-        log(f"ZIP 打包完成: {zip_path}", "success")
-        log(f"ZIP 文件大小: {os.path.getsize(zip_path)} 字节")
-
-        # ===== 上传 ZIP 到飞书表格（带重试） =====
-        log("正在上传 ZIP 到飞书表格...")
-        upload_success = False
-        last_error = None
-        for retry in range(3):
-            try:
-                feishu.upload_attachment(record_id, "结果ZIP", zip_path)
-                upload_success = True
-                break
+                    resp = requests.get(url, timeout=60, proxies=NO_PROXY)
+                    if not resp.ok:
+                        log(f"图片 {idx+1} 下载失败: HTTP {resp.status_code}", "warn")
+                        upload_fail_count += 1
+                        continue
+                    with open(img_path, "wb") as f:
+                        f.write(resp.content)
+                log(f"图片 {idx+1} 下载完成: {os.path.getsize(img_path)/1024:.0f}KB")
             except Exception as e:
-                last_error = e
-                log(f"ZIP 上传失败（第{retry+1}次）: {e}", "warn")
-                time.sleep(2)
+                log(f"图片 {idx+1} 下载失败: {e}", "warn")
+                upload_fail_count += 1
+                continue
 
-        if not upload_success:
-            log(f"ZIP 上传最终失败: {last_error}", "error")
-            # 即使上传失败，也不抛出异常，状态标记为部分成功
-            feishu.update_record_status(record_id, "部分成功", f"图片生成成功但ZIP上传失败: {str(last_error)[:300]}")
-            log(f"记录 {record_id} 部分成功（图片已生成但ZIP上传失败）", "warn")
-            return True
+            # 上传到飞书表格（追加到结果ZIP字段）
+            try:
+                feishu.append_attachment(record_id, "结果ZIP", img_path)
+                upload_success_count += 1
+                log(f"图片 {idx+1} 上传成功 ({upload_success_count}/{success_count})", "success")
+            except Exception as e:
+                log(f"图片 {idx+1} 上传失败: {e}", "warn")
+                upload_fail_count += 1
 
-        log("ZIP 上传成功", "success")
+        log(f"图片上传完成：成功 {upload_success_count} 张，失败 {upload_fail_count} 张", "success")
+
+        if upload_success_count == 0:
+            raise Exception("所有图片上传失败")
 
         # 更新状态为已完成
-        feishu.update_record_status(record_id, "已完成")
-        log(f"记录 {record_id} 处理完成！成功 {success_count} 张，失败 {fail_count} 张", "success")
+        if upload_fail_count > 0:
+            feishu.update_record_status(record_id, "部分成功", f"成功{upload_success_count}张，失败{upload_fail_count}张")
+            log(f"记录 {record_id} 部分成功：成功 {upload_success_count} 张，失败 {upload_fail_count} 张", "warn")
+        else:
+            feishu.update_record_status(record_id, "已完成")
+            log(f"记录 {record_id} 处理完成！成功 {success_count} 张", "success")
 
         return True
 
