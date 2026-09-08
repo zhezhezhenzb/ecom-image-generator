@@ -255,21 +255,21 @@ class FeishuClient:
     # ==================== 附件上传（应用身份） ====================
 
     def upload_file_to_drive(self, file_path, parent_node=""):
-        """上传文件到飞书云空间，返回 file_token"""
-        url = "https://open.feishu.cn/open-apis/drive/v1/files/create_file"
+        """上传文件到飞书云空间，返回 file_token（使用 medias/upload_all 接口）"""
+        url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all"
         file_name = os.path.basename(file_path)
         file_size = os.path.getsize(file_path)
 
         with open(file_path, "rb") as f:
-            files = {"file": (file_name, f, "application/zip")}
+            files = {"file": (file_name, f, "application/octet-stream")}
             data = {
                 "file_name": file_name,
-                "parent_type": "explorer",
-                "parent_node": parent_node,
+                "parent_type": "bitable_file",
+                "parent_node": parent_node or BASE_TOKEN,
                 "size": str(file_size)
             }
             headers = {"Authorization": f"Bearer {self._get_tenant_access_token()}"}
-            resp = requests.post(url, headers=headers, data=data, files=files, timeout=REQUEST_TIMEOUT * 2)
+            resp = requests.post(url, headers=headers, data=data, files=files, timeout=REQUEST_TIMEOUT * 3)
 
         resp.raise_for_status()
         result = resp.json()
