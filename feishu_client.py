@@ -42,11 +42,18 @@ class FeishuClient:
         self._load_user_token()
         # 如果文件中没有 token，尝试从环境变量读取
         if not self._user_refresh_token:
-            env_refresh = os.getenv("FEISHU_USER_REFRESH_TOKEN", "")
+            env_refresh = os.getenv("FEISHU_USER_REFRESH_TOKEN", "").strip()
             if env_refresh:
                 self._user_refresh_token = env_refresh
                 self._user_token_expire_time = 0  # 强制刷新
                 log("从环境变量加载了用户 refresh_token", "success")
+                # 立即尝试刷新 access_token
+                try:
+                    self.refresh_user_token()
+                    log("环境变量 token 刷新成功", "success")
+                except Exception as e:
+                    log(f"环境变量 token 刷新失败: {e}", "warn")
+                    log("请重新访问 /auth/login 授权", "warn")
 
     # ==================== 应用身份（tenant_access_token） ====================
 
@@ -383,6 +390,7 @@ class FeishuClient:
         应用身份无法下载多维表格附件，必须用用户身份
         """
         if not self.is_user_authorized():
+            log(f"授权状态检查失败: refresh_token={'有' if self._user_refresh_token else '无'}, access_token={'有' if self._user_access_token else '无'}", "warn")
             raise Exception("用户未授权，无法下载附件。请先访问 /auth/login 完成飞书授权。")
 
         save_dir = os.path.dirname(os.path.abspath(save_path))
