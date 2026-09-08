@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>电商图导出工具</title>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+      background: #f5f6f7;
+      min-height: 100vh;
+    }
+    .container { max-width: 100%; }
+    h2 {
+      font-size: 16px;
+      color: #1f2329;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .record-info {
+      font-size: 13px;
+      color: #646a73;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .record-info .name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1f2329;
+      margin-bottom: 4px;
+    }
+    .btn {
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    .btn-primary {
+      background: #3370ff;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #2860e0; }
+    .btn-primary:disabled {
+      background: #a0bfff;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #f0f1f2;
+      color: #1f2329;
+    }
+    .btn-secondary:hover { background: #e5e6e7; }
+    .progress {
+      margin-top: 12px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #e5e6e7;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #3370ff;
+      border-radius: 3px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: #646a73;
+      text-align: center;
+    }
+    .status {
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-top: 12px;
+      display: none;
+    }
+    .status.success {
+      display: block;
+      background: #e8f7ee;
+      color: #00a870;
+    }
+    .status.error {
+      display: block;
+      background: #ffece8;
+      color: #f54a45;
+    }
+    .status.info {
+      display: block;
+      background: #e8f3ff;
+      color: #3370ff;
+    }
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: #8f959e;
+      font-size: 13px;
+    }
+    .empty .icon { font-size: 40px; margin-bottom: 12px; }
+    .attach-list {
+      margin-top: 8px;
+    }
+    .attach-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 12px;
+      color: #646a73;
+      border-bottom: 1px solid #f0f1f2;
+    }
+    .attach-item:last-child { border-bottom: none; }
+    .attach-item .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3370ff;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .attach-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .attach-item .size { color: #8f959e; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📦 电商图导出工具</h2>
+
+    <div id="empty" class="empty">
+      <div class="icon">📋</div>
+      <div>请在表格中选中一条记录</div>
+    </div>
+
+    <div id="content" style="display:none;">
+      <div class="card">
+        <div class="record-info">
+          <div class="name" id="recordName">--</div>
+          <div id="recordMeta">--</div>
+        </div>
+        <div class="attach-list" id="attachList"></div>
+      </div>
+
+      <button class="btn btn-primary" id="exportBtn" onclick="exportZip()">
+        导出为 ZIP
+      </button>
+
+      <div class="progress" id="progress" style="display:none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText">准备中...</div>
+      </div>
+
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentRecord = null;
+    let currentAttachments = [];
+
+    // 格式化文件大小
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    // 显示状态
+    function showStatus(msg, type = 'info') {
+      const el = document.getElementById('status');
+      el.className = 'status ' + type;
+      el.textContent = msg;
+    }
+
+    // 更新进度
+    function updateProgress(current, total, text) {
+      document.getElementById('progress').style.display = 'block';
+      document.getElementById('progressFill').style.width = (current / total * 100) + '%';
+      document.getElementById('progressText').textContent = text || `${current}/${total}`;
+    }
+
+    // 隐藏进度
+    function hideProgress() {
+      document.getElementById('progress').style.display = 'none';
+    }
+
+    // 监听记录选中
+    async function watchRecord() {
+      try {
+        // 飞书多维表格插件 API
+        if (window.base && window.base.getActiveRecord) {
+          const record = await window.base.getActiveRecord();
+          if (record) {
+            handleRecord(record);
+          } else {
+            showEmpty();
+          }
+        } else {
+          // 开发环境模拟
+          showEmpty();
+        }
+      } catch (e) {
+        console.error('获取记录失败:', e);
+        showEmpty();
+      }
+    }
+
+    // 处理记录
+    function handleRecord(record) {
+      currentRecord = record;
+      const fields = record.fields || {};
+
+      // 获取品名
+      let productName = fields['品名'] || '未命名';
+      if (Array.isArray(productName)) {
+        productName = productName.map(t => t.text || '').join('') || '未命名';
+      }
+
+      // 获取结果ZIP附件
+      let attachments = fields['结果ZIP'] || [];
+      if (!Array.isArray(attachments)) {
+        attachments = [];
+      }
+      currentAttachments = attachments;
+
+      // 显示
+      document.getElementById('empty').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      document.getElementById('recordName').textContent = productName;
+      document.getElementById('recordMeta').textContent = `共 ${attachments.length} 张图片`;
+
+      // 附件列表
+      const listEl = document.getElementById('attachList');
+      listEl.innerHTML = '';
+      attachments.forEach((att, i) => {
+        const item = document.createElement('div');
+        item.className = 'attach-item';
+        item.innerHTML = `
+          <span class="dot"></span>
+          <span class="name">${att.name || '图片' + (i+1)}</span>
+          <span class="size">${formatSize(att.size || 0)}</span>
+        `;
+        listEl.appendChild(item);
+      });
+
+      // 按钮状态
+      const btn = document.getElementById('exportBtn');
+      btn.disabled = attachments.length === 0;
+      btn.textContent = attachments.length === 0 ? '没有可导出的图片' : `导出为 ZIP（${attachments.length}张）`;
+
+      // 隐藏状态
+      document.getElementById('status').style.display = 'none';
+      hideProgress();
+    }
+
+    // 显示空状态
+    function showEmpty() {
+      document.getElementById('empty').style.display = 'block';
+      document.getElementById('content').style.display = 'none';
+    }
+
+    // 下载文件为 blob
+    async function downloadFile(url) {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('下载失败: ' + resp.status);
+      return await resp.blob();
+    }
+
+    // 导出 ZIP
+    async function exportZip() {
+      if (!currentRecord || currentAttachments.length === 0) return;
+
+      const btn = document.getElementById('exportBtn');
+      btn.disabled = true;
+      btn.textContent = '导出中...';
+      showStatus('正在准备导出...', 'info');
+
+      try {
+        const zip = new JSZip();
+        const productName = document.getElementById('recordName').textContent || '电商图';
+        const safeName = productName.replace(/[\\/:*?"<>|]/g, '_');
+
+        for (let i = 0; i < currentAttachments.length; i++) {
+          const att = currentAttachments[i];
+          updateProgress(i + 1, currentAttachments.length, `正在下载 ${i + 1}/${currentAttachments.length}: ${att.name || '图片' + (i+1)}`);
+
+          try {
+            let blob;
+            if (att.tmp_url) {
+              // 有临时链接，直接下载
+              blob = await downloadFile(att.tmp_url);
+            } else if (att.file_token) {
+              // 没有临时链接，尝试用插件 API 获取
+              throw new Error('附件缺少临时链接');
+            } else {
+              throw new Error('无效的附件');
+            }
+
+            const fileName = att.name || `image_${i+1}.jpg`;
+            zip.file(fileName, blob);
+          } catch (e) {
+            console.warn(`附件 ${i+1} 下载失败:`, e);
+            // 继续下一张
+          }
+        }
+
+        updateProgress(currentAttachments.length, currentAttachments.length, '正在打包 ZIP...');
+
+        // 生成 ZIP
+        const content = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        }, (metadata) => {
+          updateProgress(metadata.percent | 0, 100, `打包中 ${metadata.percent.toFixed(0)}%`);
+        });
+
+        // 触发下载
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${safeName}_电商图套装_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showStatus(`✅ 导出成功！共 ${currentAttachments.length} 张图片`, 'success');
+      } catch (e) {
+        console.error('导出失败:', e);
+        showStatus('❌ 导出失败: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = `导出为 ZIP（${currentAttachments.length}张）`;
+        setTimeout(hideProgress, 2000);
+      }
+    }
+
+    // 初始化：监听记录变化
+    document.addEventListener('DOMContentLoaded', () => {
+      watchRecord();
+      // 定时检查记录是否变化（插件 API 可能没有事件监听）
+      setInterval(watchRecord, 1000);
+    });
+  </script>
+</body>
+</html>
