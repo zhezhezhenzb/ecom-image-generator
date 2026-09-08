@@ -297,22 +297,26 @@ class FeishuClient:
         save_filename = os.path.basename(save_path)
         os.makedirs(save_dir, exist_ok=True)
 
-        # 第一步：用用户身份获取临时下载链接（POST + 请求体数组）
-        tmp_url_api = "https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url"
-        resp = requests.post(tmp_url_api, headers=self._user_headers(), json={"file_tokens": [file_token]}, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("code") != 0:
-            raise Exception(f"获取临时下载链接失败: {data}")
+        # 方式1：直接用下载接口
+        download_url = f"https://open.feishu.cn/open-apis/drive/v1/medias/{file_token}/download"
+        resp = requests.get(download_url, headers=self._user_headers(), timeout=REQUEST_TIMEOUT * 2)
+        
+        if resp.status_code == 404:
+            # 方式2：先获取临时下载链接（POST）
+            tmp_url_api = "https://open.feishu.cn/open-apis/drive/v1/medias/batch_get_tmp_download_url"
+            resp2 = requests.post(tmp_url_api, headers=self._user_headers(), json={"file_tokens": [file_token]}, timeout=REQUEST_TIMEOUT)
+            if resp2.status_code == 404:
+                raise Exception(f"下载接口404，file_token可能无效或无权限。token: {file_token}")
+            resp2.raise_for_status()
+            data = resp2.json()
+            if data.get("code") != 0:
+                raise Exception(f"获取临时下载链接失败: {data}")
+            urls = data.get("data", {}).get("tmp_download_urls", [])
+            if not urls or not urls[0].get("tmp_download_url"):
+                raise Exception(f"临时下载链接为空（file_token: {file_token}），用户可能无权限访问该附件")
+            tmp_download_url = urls[0]["tmp_download_url"]
+            resp = requests.get(tmp_download_url, timeout=REQUEST_TIMEOUT * 2)
 
-        urls = data.get("data", {}).get("tmp_download_urls", [])
-        if not urls or not urls[0].get("tmp_download_url"):
-            raise Exception(f"临时下载链接为空（file_token: {file_token}），用户可能无权限访问该附件")
-
-        tmp_download_url = urls[0]["tmp_download_url"]
-
-        # 第二步：用临时链接下载文件（不需要 token）
-        resp = requests.get(tmp_download_url, timeout=REQUEST_TIMEOUT * 2)
         resp.raise_for_status()
 
         final_path = os.path.join(save_dir, save_filename)
