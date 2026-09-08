@@ -13,14 +13,10 @@
       background: #f5f6f7;
       min-height: 100vh;
     }
-    .container { max-width: 100%; }
     h2 {
       font-size: 16px;
       color: #1f2329;
       margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
     .card {
       background: #fff;
@@ -29,17 +25,16 @@
       margin-bottom: 12px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
-    .record-info {
-      font-size: 13px;
-      color: #646a73;
-      margin-bottom: 12px;
-      line-height: 1.6;
-    }
-    .record-info .name {
+    .record-name {
       font-size: 15px;
       font-weight: 600;
       color: #1f2329;
       margin-bottom: 4px;
+    }
+    .record-meta {
+      font-size: 13px;
+      color: #646a73;
+      margin-bottom: 12px;
     }
     .btn {
       width: 100%;
@@ -48,26 +43,13 @@
       border-radius: 6px;
       font-size: 14px;
       cursor: pointer;
-      transition: all 0.2s;
       font-weight: 500;
-    }
-    .btn-primary {
       background: #3370ff;
       color: #fff;
     }
-    .btn-primary:hover { background: #2860e0; }
-    .btn-primary:disabled {
-      background: #a0bfff;
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      background: #f0f1f2;
-      color: #1f2329;
-    }
-    .btn-secondary:hover { background: #e5e6e7; }
-    .progress {
-      margin-top: 12px;
-    }
+    .btn:hover { background: #2860e0; }
+    .btn:disabled { background: #a0bfff; cursor: not-allowed; }
+    .progress { margin-top: 12px; display: none; }
     .progress-bar {
       width: 100%;
       height: 6px;
@@ -79,15 +61,10 @@
     .progress-fill {
       height: 100%;
       background: #3370ff;
-      border-radius: 3px;
       transition: width 0.3s;
       width: 0%;
     }
-    .progress-text {
-      font-size: 12px;
-      color: #646a73;
-      text-align: center;
-    }
+    .progress-text { font-size: 12px; color: #646a73; text-align: center; }
     .status {
       font-size: 13px;
       padding: 8px 12px;
@@ -95,21 +72,9 @@
       margin-top: 12px;
       display: none;
     }
-    .status.success {
-      display: block;
-      background: #e8f7ee;
-      color: #00a870;
-    }
-    .status.error {
-      display: block;
-      background: #ffece8;
-      color: #f54a45;
-    }
-    .status.info {
-      display: block;
-      background: #e8f3ff;
-      color: #3370ff;
-    }
+    .status.success { display: block; background: #e8f7ee; color: #00a870; }
+    .status.error { display: block; background: #ffece8; color: #f54a45; }
+    .status.info { display: block; background: #e8f3ff; color: #3370ff; }
     .empty {
       text-align: center;
       padding: 40px 20px;
@@ -117,8 +82,16 @@
       font-size: 13px;
     }
     .empty .icon { font-size: 40px; margin-bottom: 12px; }
-    .attach-list {
-      margin-top: 8px;
+    .debug {
+      margin-top: 16px;
+      padding: 8px;
+      background: #f0f1f2;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #8f959e;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: monospace;
     }
     .attach-item {
       display: flex;
@@ -130,165 +103,232 @@
     }
     .attach-item:last-child { border-bottom: none; }
     .attach-item .dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #3370ff;
-      margin-right: 8px;
-      flex-shrink: 0;
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #3370ff; margin-right: 8px; flex-shrink: 0;
     }
     .attach-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .attach-item .size { color: #8f959e; margin-left: 8px; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>📦 电商图导出工具</h2>
+  <h2>📦 电商图导出工具</h2>
 
-    <div id="empty" class="empty">
-      <div class="icon">📋</div>
-      <div>请在表格中选中一条记录</div>
-    </div>
-
-    <div id="content" style="display:none;">
-      <div class="card">
-        <div class="record-info">
-          <div class="name" id="recordName">--</div>
-          <div id="recordMeta">--</div>
-        </div>
-        <div class="attach-list" id="attachList"></div>
-      </div>
-
-      <button class="btn btn-primary" id="exportBtn" onclick="exportZip()">
-        导出为 ZIP
-      </button>
-
-      <div class="progress" id="progress" style="display:none;">
-        <div class="progress-bar">
-          <div class="progress-fill" id="progressFill"></div>
-        </div>
-        <div class="progress-text" id="progressText">准备中...</div>
-      </div>
-
-      <div class="status" id="status"></div>
-    </div>
+  <div id="empty" class="empty">
+    <div class="icon">📋</div>
+    <div>请在表格中选中一条记录</div>
+    <div style="margin-top:8px;font-size:11px;color:#aaa;">（点击某一行的任意单元格）</div>
   </div>
+
+  <div id="content" style="display:none;">
+    <div class="card">
+      <div class="record-name" id="recordName">--</div>
+      <div class="record-meta" id="recordMeta">--</div>
+      <div id="attachList"></div>
+    </div>
+    <button class="btn" id="exportBtn" onclick="exportZip()">导出为 ZIP</button>
+    <div class="progress" id="progress">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="debug" id="debug" style="display:none;"></div>
 
   <script>
     let currentRecord = null;
     let currentAttachments = [];
+    let debugLogs = [];
 
-    // 格式化文件大小
+    function debug(msg) {
+      debugLogs.push(msg);
+      const el = document.getElementById('debug');
+      if (debugLogs.length > 20) debugLogs.shift();
+      el.innerHTML = debugLogs.map(l => '• ' + l).join('<br>');
+      el.style.display = 'block';
+      console.log('[插件调试]', msg);
+    }
+
     function formatSize(bytes) {
+      if (!bytes) return '0 B';
       if (bytes < 1024) return bytes + ' B';
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
       return (bytes / 1024 / 1024).toFixed(2) + ' MB';
     }
 
-    // 显示状态
-    function showStatus(msg, type = 'info') {
+    function showStatus(msg, type) {
       const el = document.getElementById('status');
       el.className = 'status ' + type;
       el.textContent = msg;
     }
 
-    // 更新进度
-    function updateProgress(current, total, text) {
-      document.getElementById('progress').style.display = 'block';
-      document.getElementById('progressFill').style.width = (current / total * 100) + '%';
-      document.getElementById('progressText').textContent = text || `${current}/${total}`;
+    // 检测飞书 base API
+    function getBaseApi() {
+      // 尝试多种可能的 API 入口
+      if (window.base) return window.base;
+      if (window.lark) return window.lark;
+      if (window.feishu) return window.feishu;
+      if (window.bitable) return window.bitable;
+      return null;
     }
 
-    // 隐藏进度
-    function hideProgress() {
-      document.getElementById('progress').style.display = 'none';
-    }
-
-    // 监听记录选中
-    async function watchRecord() {
-      try {
-        // 飞书多维表格插件 API
-        if (window.base && window.base.getActiveRecord) {
-          const record = await window.base.getActiveRecord();
-          if (record) {
-            handleRecord(record);
-          } else {
-            showEmpty();
-          }
-        } else {
-          // 开发环境模拟
-          showEmpty();
-        }
-      } catch (e) {
-        console.error('获取记录失败:', e);
-        showEmpty();
+    // 获取当前选中的记录
+    async function getCurrentRecord() {
+      const base = getBaseApi();
+      if (!base) {
+        debug('未找到 base API 对象');
+        return null;
       }
+
+      debug('找到 base API，可用方法: ' + Object.keys(base).slice(0, 10).join(', '));
+
+      // 尝试多种获取记录的方法
+      const methods = [
+        'getActiveRecord',
+        'getCurrentRecord',
+        'getSelection',
+        'getActiveCell',
+        'getSelectedRecord',
+      ];
+
+      for (const method of methods) {
+        if (typeof base[method] === 'function') {
+          try {
+            debug('尝试调用: ' + method);
+            const result = await base[method]();
+            debug(method + ' 返回: ' + JSON.stringify(result).slice(0, 200));
+            if (result) {
+              // 如果返回的是单元格，尝试获取所在行的记录
+              if (result.recordId || result.record_id) {
+                const recordId = result.recordId || result.record_id;
+                debug('从单元格获取到 recordId: ' + recordId);
+                if (base.getRecord) {
+                  return await base.getRecord(recordId);
+                }
+              }
+              // 如果返回的就是记录
+              if (result.fields || result.record) {
+                return result.record || result;
+              }
+              return result;
+            }
+          } catch (e) {
+            debug(method + ' 调用失败: ' + e.message);
+          }
+        }
+      }
+
+      // 尝试事件监听方式
+      debug('所有直接方法都失败，尝试事件监听');
+      return null;
+    }
+
+    // 从记录中提取附件字段
+    function extractAttachments(record) {
+      const fields = record.fields || record;
+      // 可能的附件字段名
+      const attachFieldNames = ['结果图片', '结果ZIP', '附件', '图片', '生成结果'];
+
+      for (const name of attachFieldNames) {
+        if (fields[name] && Array.isArray(fields[name]) && fields[name].length > 0) {
+          debug('找到附件字段: ' + name + '，共 ' + fields[name].length + ' 个');
+          return { name, attachments: fields[name] };
+        }
+      }
+
+      // 自动检测：找第一个数组类型且包含 file_token 的字段
+      for (const key in fields) {
+        const val = fields[key];
+        if (Array.isArray(val) && val.length > 0 && val[0] && (val[0].file_token || val[0].tmp_url)) {
+          debug('自动检测到附件字段: ' + key);
+          return { name: key, attachments: val };
+        }
+      }
+
+      debug('未找到附件字段，所有字段: ' + Object.keys(fields).join(', '));
+      return null;
+    }
+
+    // 从记录中提取品名
+    function extractProductName(record) {
+      const fields = record.fields || record;
+      const nameFields = ['品名', '产品名称', '名称', '标题'];
+      for (const name of nameFields) {
+        let val = fields[name];
+        if (val) {
+          if (Array.isArray(val)) val = val.map(t => t.text || '').join('');
+          return val;
+        }
+      }
+      return '未命名';
     }
 
     // 处理记录
     function handleRecord(record) {
       currentRecord = record;
-      const fields = record.fields || {};
+      const productName = extractProductName(record);
+      const attachInfo = extractAttachments(record);
 
-      // 获取品名
-      let productName = fields['品名'] || '未命名';
-      if (Array.isArray(productName)) {
-        productName = productName.map(t => t.text || '').join('') || '未命名';
-      }
-
-      // 获取结果ZIP附件
-      let attachments = fields['结果ZIP'] || [];
-      if (!Array.isArray(attachments)) {
-        attachments = [];
-      }
-      currentAttachments = attachments;
-
-      // 显示
       document.getElementById('empty').style.display = 'none';
       document.getElementById('content').style.display = 'block';
       document.getElementById('recordName').textContent = productName;
-      document.getElementById('recordMeta').textContent = `共 ${attachments.length} 张图片`;
 
-      // 附件列表
-      const listEl = document.getElementById('attachList');
-      listEl.innerHTML = '';
-      attachments.forEach((att, i) => {
-        const item = document.createElement('div');
-        item.className = 'attach-item';
-        item.innerHTML = `
-          <span class="dot"></span>
-          <span class="name">${att.name || '图片' + (i+1)}</span>
-          <span class="size">${formatSize(att.size || 0)}</span>
-        `;
-        listEl.appendChild(item);
-      });
+      if (attachInfo) {
+        currentAttachments = attachInfo.attachments;
+        document.getElementById('recordMeta').textContent =
+          `字段「${attachInfo.name}」共 ${attachInfo.attachments.length} 张图片`;
 
-      // 按钮状态
-      const btn = document.getElementById('exportBtn');
-      btn.disabled = attachments.length === 0;
-      btn.textContent = attachments.length === 0 ? '没有可导出的图片' : `导出为 ZIP（${attachments.length}张）`;
+        const listEl = document.getElementById('attachList');
+        listEl.innerHTML = '';
+        attachInfo.attachments.forEach((att, i) => {
+          const item = document.createElement('div');
+          item.className = 'attach-item';
+          item.innerHTML = `
+            <span class="dot"></span>
+            <span class="name">${att.name || '图片' + (i+1)}</span>
+            <span class="size">${formatSize(att.size)}</span>
+          `;
+          listEl.appendChild(item);
+        });
 
-      // 隐藏状态
+        const btn = document.getElementById('exportBtn');
+        btn.disabled = attachInfo.attachments.length === 0;
+        btn.textContent = attachInfo.attachments.length === 0
+          ? '没有可导出的图片'
+          : `导出为 ZIP（${attachInfo.attachments.length}张）`;
+      } else {
+        currentAttachments = [];
+        document.getElementById('recordMeta').textContent = '未找到附件字段';
+        document.getElementById('exportBtn').disabled = true;
+        document.getElementById('exportBtn').textContent = '没有可导出的图片';
+      }
+
       document.getElementById('status').style.display = 'none';
-      hideProgress();
+      document.getElementById('progress').style.display = 'none';
     }
 
-    // 显示空状态
-    function showEmpty() {
-      document.getElementById('empty').style.display = 'block';
-      document.getElementById('content').style.display = 'none';
+    // 轮询检测选中记录
+    async function pollRecord() {
+      try {
+        const record = await getCurrentRecord();
+        if (record) {
+          handleRecord(record);
+        }
+      } catch (e) {
+        debug('轮询出错: ' + e.message);
+      }
     }
 
-    // 下载文件为 blob
+    // 下载文件
     async function downloadFile(url) {
       const resp = await fetch(url);
-      if (!resp.ok) throw new Error('下载失败: ' + resp.status);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return await resp.blob();
     }
 
     // 导出 ZIP
     async function exportZip() {
-      if (!currentRecord || currentAttachments.length === 0) return;
+      if (currentAttachments.length === 0) return;
 
       const btn = document.getElementById('exportBtn');
       btn.disabled = true;
@@ -302,40 +342,30 @@
 
         for (let i = 0; i < currentAttachments.length; i++) {
           const att = currentAttachments[i];
-          updateProgress(i + 1, currentAttachments.length, `正在下载 ${i + 1}/${currentAttachments.length}: ${att.name || '图片' + (i+1)}`);
+          document.getElementById('progress').style.display = 'block';
+          document.getElementById('progressFill').style.width = ((i+0.5)/currentAttachments.length*100) + '%';
+          document.getElementById('progressText').textContent = `下载 ${i+1}/${currentAttachments.length}: ${att.name || '图片'+(i+1)}`;
 
           try {
             let blob;
             if (att.tmp_url) {
-              // 有临时链接，直接下载
               blob = await downloadFile(att.tmp_url);
+            } else if (att.url) {
+              blob = await downloadFile(att.url);
             } else if (att.file_token) {
-              // 没有临时链接，尝试用插件 API 获取
-              throw new Error('附件缺少临时链接');
+              throw new Error('附件只有file_token，没有临时下载链接');
             } else {
-              throw new Error('无效的附件');
+              throw new Error('无效附件');
             }
-
-            const fileName = att.name || `image_${i+1}.jpg`;
-            zip.file(fileName, blob);
+            zip.file(att.name || `image_${i+1}.jpg`, blob);
           } catch (e) {
-            console.warn(`附件 ${i+1} 下载失败:`, e);
-            // 继续下一张
+            debug(`图片 ${i+1} 下载失败: ${e.message}`);
           }
         }
 
-        updateProgress(currentAttachments.length, currentAttachments.length, '正在打包 ZIP...');
+        document.getElementById('progressText').textContent = '正在打包 ZIP...';
+        const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
 
-        // 生成 ZIP
-        const content = await zip.generateAsync({
-          type: 'blob',
-          compression: 'DEFLATE',
-          compressionOptions: { level: 6 }
-        }, (metadata) => {
-          updateProgress(metadata.percent | 0, 100, `打包中 ${metadata.percent.toFixed(0)}%`);
-        });
-
-        // 触发下载
         const url = URL.createObjectURL(content);
         const a = document.createElement('a');
         a.href = url;
@@ -347,20 +377,25 @@
 
         showStatus(`✅ 导出成功！共 ${currentAttachments.length} 张图片`, 'success');
       } catch (e) {
-        console.error('导出失败:', e);
         showStatus('❌ 导出失败: ' + e.message, 'error');
+        debug('导出失败: ' + e.message + '\n' + e.stack);
       } finally {
         btn.disabled = false;
         btn.textContent = `导出为 ZIP（${currentAttachments.length}张）`;
-        setTimeout(hideProgress, 2000);
+        setTimeout(() => { document.getElementById('progress').style.display = 'none'; }, 2000);
       }
     }
 
-    // 初始化：监听记录变化
+    // 初始化
     document.addEventListener('DOMContentLoaded', () => {
-      watchRecord();
-      // 定时检查记录是否变化（插件 API 可能没有事件监听）
-      setInterval(watchRecord, 1000);
+      debug('页面加载完成');
+      debug('window.base: ' + (window.base ? '存在' : '不存在'));
+      debug('window.lark: ' + (window.lark ? '存在' : '不存在'));
+
+      // 立即检测一次
+      pollRecord();
+      // 每秒轮询
+      setInterval(pollRecord, 1000);
     });
   </script>
 </body>
