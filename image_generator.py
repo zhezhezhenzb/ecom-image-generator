@@ -662,7 +662,7 @@ def process_record(record_id):
             tmp_url = att.get("tmp_url") if isinstance(att, dict) else None
             save_path = os.path.join(work_dir, f"prod_{idx+1}.jpg")
             try:
-                feishu.download_attachment(file_token, save_path, record_id=record_id, tmp_url=tmp_url)
+                feishu.download_attachment(file_token, save_path, record_id=record_id, tmp_url=tmp_url, field_id="fld0qtJ498")
                 b64, img = compress_image(save_path, 1024, 82)
                 prod_base64s.append(b64)
                 prod_images.append(save_path)
@@ -682,7 +682,7 @@ def process_record(record_id):
             tmp_url = att.get("tmp_url") if isinstance(att, dict) else None
             save_path = os.path.join(work_dir, f"ref_{idx+1}.jpg")
             try:
-                feishu.download_attachment(file_token, save_path, record_id=record_id, tmp_url=tmp_url)
+                feishu.download_attachment(file_token, save_path, record_id=record_id, tmp_url=tmp_url, field_id="fld16BFz3m")
                 b64, img = compress_image(save_path, 1024, 82)
                 ref_base64s.append(b64)
                 ref_images.append(save_path)
