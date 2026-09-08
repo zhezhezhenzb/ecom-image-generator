@@ -338,7 +338,7 @@ class FeishuClient:
                 files = {"file": (file_name, chunk, "application/octet-stream")}
                 data = {
                     "upload_id": upload_id,
-                    "block_seq": i
+                    "block_seq": i + 1  # 飞书分片序号从1开始
                 }
                 resp = requests.post(part_url, headers=headers, data=data, files=files,
                                      timeout=600, proxies=NO_PROXY)
