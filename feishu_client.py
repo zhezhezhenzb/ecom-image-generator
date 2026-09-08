@@ -285,7 +285,7 @@ class FeishuClient:
 
     # ==================== 附件下载（用户身份） ====================
 
-    def download_attachment(self, file_token, save_path, record_id=None, base_token=None, table_id=None):
+    def download_attachment(self, file_token, save_path, record_id=None, base_token=None, table_id=None, tmp_url=None):
         """
         下载附件到本地（使用用户身份 token）
         应用身份无法下载多维表格附件，必须用用户身份
@@ -299,6 +299,16 @@ class FeishuClient:
 
         bt = base_token or BASE_TOKEN
         tid = table_id or TABLE_ID
+
+        # 方式0：如果有 tmp_url（记录详情返回的，已带正确的 extra 参数），直接用
+        if tmp_url:
+            resp = requests.get(tmp_url, headers=self._user_headers(), timeout=REQUEST_TIMEOUT * 2)
+            if resp.status_code == 200 and len(resp.content) > 0:
+                final_path = os.path.join(save_dir, save_filename)
+                with open(final_path, "wb") as f:
+                    f.write(resp.content)
+                if os.path.getsize(final_path) > 0:
+                    return final_path
 
         # 构建 extra 参数（必须作为 URL 查询参数，且需要 URL 编码）
         extra_obj = {"bitablePerm": {"tableId": tid, "rev": 0}}
