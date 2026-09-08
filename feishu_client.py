@@ -8,9 +8,17 @@ import time
 import requests
 from config import FEISHU_APP_ID, FEISHU_APP_SECRET, BASE_TOKEN, TABLE_ID, REQUEST_TIMEOUT, TEMP_DIR
 
+# 禁用代理（本地运行时可能有系统代理导致连不上飞书）
+os.environ['NO_PROXY'] = '*'
+os.environ['no_proxy'] = '*'
+NO_PROXY = {"http": None, "https": None}
+
 
 # 用户 token 保存文件
 USER_TOKEN_FILE = os.path.join(TEMP_DIR, "user_token.json")
+
+# 禁用代理（本地运行时可能有系统代理导致连不上飞书）
+NO_PROXY = {"http": None, "https": None}
 
 
 def log(msg, level="info"):
@@ -23,13 +31,14 @@ class FeishuClient:
     """飞书 OpenAPI 客户端"""
 
     def __init__(self, app_id=None, app_secret=None):
-        self.app_id = app_id or FEISHU_APP_ID
-        self.app_secret = app_secret or FEISHU_APP_SECRET
+        self.app_id = (app_id or FEISHU_APP_ID or "").strip()
+        self.app_secret = (app_secret or FEISHU_APP_SECRET or "").strip()
         self._tenant_access_token = None
         self._token_expire_time = 0
         self._user_access_token = None
         self._user_refresh_token = None
         self._user_token_expire_time = 0
+        log(f"飞书应用配置: app_id={self.app_id[:8]}... (长度{len(self.app_id)}), app_secret长度={len(self.app_secret)}")
         self._load_user_token()
         # 如果文件中没有 token，尝试从环境变量读取
         if not self._user_refresh_token:
@@ -46,15 +55,18 @@ class FeishuClient:
         if self._tenant_access_token and time.time() < self._token_expire_time - 60:
             return self._tenant_access_token
 
+        if not self.app_id or not self.app_secret:
+            raise Exception(f"飞书应用配置缺失: app_id={'已设置' if self.app_id else '空'}, app_secret={'已设置' if self.app_secret else '空'}。请检查 .env 文件中的 FEISHU_APP_ID 和 FEISHU_APP_SECRET")
+
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         resp = requests.post(url, json={
             "app_id": self.app_id,
             "app_secret": self.app_secret
-        }, timeout=REQUEST_TIMEOUT)
+        }, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
         resp.raise_for_status()
         data = resp.json()
         if data.get("code") != 0:
-            raise Exception(f"获取 tenant_access_token 失败: {data}")
+            raise Exception(f"获取 tenant_access_token 失败: {data}。请检查 .env 文件中的 FEISHU_APP_ID 和 FEISHU_APP_SECRET 是否正确")
         self._tenant_access_token = data["tenant_access_token"]
         self._token_expire_time = time.time() + data.get("expire", 7200)
         return self._tenant_access_token
@@ -127,11 +139,18 @@ class FeishuClient:
             raise Exception(f"刷新用户token失败: {data}")
 
         token_data = data["data"]
+        old_refresh = self._user_refresh_token
         self._user_access_token = token_data["access_token"]
         self._user_refresh_token = token_data.get("refresh_token", self._user_refresh_token)
         self._user_token_expire_time = time.time() + token_data.get("expires_in", 7200)
         self._save_user_token()
         log("用户token已刷新", "success")
+        # 如果 refresh_token 变了，提醒用户更新环境变量
+        if self._user_refresh_token != old_refresh:
+            log("=" * 60)
+            log("【重要】refresh_token 已刷新，请更新 Render 环境变量 FEISHU_USER_REFRESH_TOKEN：")
+            log(f"FEISHU_USER_REFRESH_TOKEN={self._user_refresh_token}")
+            log("=" * 60)
         return token_data
 
     def get_user_access_token(self):
@@ -255,27 +274,88 @@ class FeishuClient:
     # ==================== 附件上传（应用身份） ====================
 
     def upload_file_to_drive(self, file_path, parent_node=""):
-        """上传文件到飞书云空间，返回 file_token（使用 medias/upload_all 接口）"""
-        url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all"
+        """上传文件到飞书云空间，返回 file_token
+        小于20MB用 upload_all，大于等于20MB用分片上传
+        """
         file_name = os.path.basename(file_path)
         file_size = os.path.getsize(file_path)
+        parent = parent_node or BASE_TOKEN
+        headers = {"Authorization": f"Bearer {self._get_tenant_access_token()}"}
 
-        with open(file_path, "rb") as f:
-            files = {"file": (file_name, f, "application/octet-stream")}
-            data = {
-                "file_name": file_name,
-                "parent_type": "bitable_file",
-                "parent_node": parent_node or BASE_TOKEN,
-                "size": str(file_size)
-            }
-            headers = {"Authorization": f"Bearer {self._get_tenant_access_token()}"}
-            resp = requests.post(url, headers=headers, data=data, files=files, timeout=REQUEST_TIMEOUT * 3)
+        # 小于20MB直接上传
+        if file_size < 20 * 1024 * 1024:
+            url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all"
+            with open(file_path, "rb") as f:
+                files = {"file": (file_name, f, "application/octet-stream")}
+                data = {
+                    "file_name": file_name,
+                    "parent_type": "bitable_file",
+                    "parent_node": parent,
+                    "size": str(file_size)
+                }
+                resp = requests.post(url, headers=headers, data=data, files=files, timeout=600, proxies=NO_PROXY)
+            resp.raise_for_status()
+            result = resp.json()
+            if result.get("code") != 0:
+                raise Exception(f"上传文件失败: {result}")
+            return result["data"]["file_token"]
 
+        # 大于等于20MB用分片上传
+        log(f"文件较大（{file_size/1024/1024:.1f}MB），使用分片上传...")
+        block_size = 4 * 1024 * 1024  # 4MB 一片
+        block_num = (file_size + block_size - 1) // block_size
+
+        # 第一步：准备上传
+        prepare_url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_prepare"
+        prepare_data = {
+            "file_name": file_name,
+            "parent_type": "bitable_file",
+            "parent_node": parent,
+            "size": file_size,
+            "block_size": block_size
+        }
+        resp = requests.post(prepare_url, headers={**headers, "Content-Type": "application/json"},
+                             json=prepare_data, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
         resp.raise_for_status()
-        result = resp.json()
-        if result.get("code") != 0:
-            raise Exception(f"上传文件失败: {result}")
-        return result["data"]["file_token"]
+        prepare_result = resp.json()
+        if prepare_result.get("code") != 0:
+            raise Exception(f"分片上传准备失败: {prepare_result}")
+        upload_id = prepare_result["data"]["upload_id"]
+        log(f"分片上传准备成功，upload_id={upload_id}，共{block_num}片")
+
+        # 第二步：逐片上传
+        part_url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_part"
+        with open(file_path, "rb") as f:
+            for i in range(block_num):
+                chunk = f.read(block_size)
+                files = {"file": (file_name, chunk, "application/octet-stream")}
+                data = {
+                    "upload_id": upload_id,
+                    "block_seq": i
+                }
+                resp = requests.post(part_url, headers=headers, data=data, files=files,
+                                     timeout=600, proxies=NO_PROXY)
+                resp.raise_for_status()
+                part_result = resp.json()
+                if part_result.get("code") != 0:
+                    raise Exception(f"分片{i+1}/{block_num}上传失败: {part_result}")
+                log(f"分片{i+1}/{block_num}上传成功")
+
+        # 第三步：完成上传
+        finish_url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_finish"
+        finish_data = {
+            "upload_id": upload_id,
+            "block_num": block_num
+        }
+        resp = requests.post(finish_url, headers={**headers, "Content-Type": "application/json"},
+                             json=finish_data, timeout=REQUEST_TIMEOUT, proxies=NO_PROXY)
+        resp.raise_for_status()
+        finish_result = resp.json()
+        if finish_result.get("code") != 0:
+            raise Exception(f"分片上传完成失败: {finish_result}")
+        file_token = finish_result["data"]["file_token"]
+        log(f"分片上传完成，file_token={file_token}", "success")
+        return file_token
 
     def attach_zip_to_record(self, record_id, zip_path, field_name="结果ZIP"):
         """把 ZIP 文件作为附件写入记录字段"""

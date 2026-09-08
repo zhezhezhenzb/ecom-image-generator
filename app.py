@@ -215,10 +215,18 @@ async def auth_callback(code: str = "", state: str = "", error: str = ""):
     try:
         feishu = get_feishu_client()
         token_data = feishu.exchange_code_for_token(code)
+        refresh_token = token_data.get("refresh_token", "")
         return HTMLResponse(f"""
         <h2>✅ 授权成功！</h2>
         <p>用户授权已完成，现在可以正常下载附件和跑图了。</p>
         <p><a href="/health">查看服务状态</a> | <a href="/auth/status">查看授权状态</a></p>
+        <hr>
+        <h3>⚠️ 重要：请保存 refresh_token 到环境变量（避免重启后重新授权）</h3>
+        <p>复制下面的值，到 Render → Environment → 添加环境变量：</p>
+        <p><strong>Key:</strong> <code>FEISHU_USER_REFRESH_TOKEN</code></p>
+        <p><strong>Value:</strong></p>
+        <textarea rows="3" cols="80" readonly onclick="this.select()">{refresh_token}</textarea>
+        <p style="color: #666; font-size: 12px;">保存后服务重启会自动从环境变量加载，不需要再授权。token 刷新后会在日志中提示更新。</p>
         """)
     except Exception as e:
         return HTMLResponse(f"<h2>授权失败</h2><p>错误: {e}</p>", status_code=500)
